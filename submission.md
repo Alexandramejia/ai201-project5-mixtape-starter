@@ -67,3 +67,49 @@ Association tables aren't all simple. Most many to many tables, like `song_tags`
 Services sometimes call other services. For example, `notification_service.py` imports from `playlist_service.py`. So the layers aren't perfectly isolated since services can depend on each other, not just on models.
 
 Naming doesn't always match exactly. `rate_song()` is in `notification_service.py`, not in a ratings or songs service. I had to actually open the file to find it instead of guessing from the name.
+
+# Milestone 2: Bug Reproduction
+
+I seeded the database with `python seed_data.py` and ran the app with `FLASK_APP=app:create_app flask run`. Since the seed script generates random UUIDs each run, I looked up the actual user and song IDs from that run (via a quick `GET /songs/search` and querying the seeded users) before making the requests below.
+
+## Issue #1: My listening streak keeps resetting
+
+### How I reproduced it
+I ran the existing test suite with `pytest tests/test_streaks.py -v`. One of the tests, `test_streak_increments_on_sunday`, has a user listen on a Saturday and then on the very next day, a Sunday, using fixed dates so it does not depend on what day it actually is today.
+
+Expected: listening on two days in a row (Saturday then Sunday) should bump the streak from 1 to 2, same as any other pair of consecutive days.
+Actual: the test fails with `assert 1 == 2`. The streak stays at 1 after listening on Sunday instead of going up. Listening on a Sunday resets the streak instead of continuing it.
+
+## Issue #4: I got notified when a friend added my song to a playlist but not when they rated it
+
+### How I reproduced it
+Using the seeded data, "Crown Heights Anthem" is shared by simone. I had nova rate that song:
+
+```
+curl -X POST "http://127.0.0.1:5000/songs/<crown_heights_anthem_id>/rate" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"<nova_id>","score":5}'
+```
+
+Then I checked simone's notifications:
+
+```
+curl "http://127.0.0.1:5000/users/<simone_id>/notifications"
+```
+
+For comparison, I also looked at nova's notifications, which already has a seeded `song_added_to_playlist` notification from darius adding "Midnight Drive" to a playlist, so I know that notification path works.
+
+Expected: simone should get a notification that nova rated her song, the same way nova got notified when darius added her song to a playlist.
+Actual: the rate request succeeds (201, rating gets saved), but `GET /users/<simone_id>/notifications` comes back with `"count": 0`. No notification ever gets created when someone rates a song.
+
+## Issue #5: The last song in a playlist never shows up
+
+### How I reproduced it
+The seeded "Late Night Vibes" playlist, created by nova, has 7 songs in order: Midnight Drive, Still Waters, First Light, Block Party, Late Night Session, Golden Hour, Free Throws. I requested its songs:
+
+```
+curl "http://127.0.0.1:5000/playlists/<late_night_vibes_id>/songs"
+```
+
+Expected: the response should return all 7 songs in position order, ending with "Free Throws".
+Actual: the response comes back with `"count": 6` and stops at "Golden Hour." "Free Throws," the last song by position, is missing from the list entirely.
