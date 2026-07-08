@@ -70,20 +70,17 @@ Naming doesn't always match exactly. `rate_song()` is in `notification_service.p
 
 # Milestone 2: Bug Reproduction
 
-I seeded the database with `python seed_data.py` and ran the app with `FLASK_APP=app:create_app flask run`. Since the seed script generates random UUIDs each run, I looked up the actual user and song IDs from that run (via a quick `GET /songs/search` and querying the seeded users) before making the requests below.
+I seeded the database with `python seed_data.py` and ran the app with `FLASK_APP=app:create_app flask run`. The seed script generates new random UUIDs every run, so I had to grab the actual user and song IDs for this run (a quick `GET /songs/search`, plus checking the seeded users) before making the requests below.
 
 ## Issue #1: My listening streak keeps resetting
 
-### How I reproduced it
-I ran the existing test suite with `pytest tests/test_streaks.py -v`. One of the tests, `test_streak_increments_on_sunday`, has a user listen on a Saturday and then on the very next day, a Sunday, using fixed dates so it does not depend on what day it actually is today.
+I ran `pytest tests/test_streaks.py -v` instead of testing this by hand. One of the tests, `test_streak_increments_on_sunday`, has a user listen on a Saturday and then the next day, a Sunday, using hardcoded dates so the result doesn't depend on what day it actually is.
 
-Expected: listening on two days in a row (Saturday then Sunday) should bump the streak from 1 to 2, same as any other pair of consecutive days.
-Actual: the test fails with `assert 1 == 2`. The streak stays at 1 after listening on Sunday instead of going up. Listening on a Sunday resets the streak instead of continuing it.
+Two days listened in a row, Saturday then Sunday, should bump the streak from 1 to 2 like any other consecutive pair. Instead the test fails on `assert 1 == 2` — the streak stays at 1 after the Sunday listen. Sunday is resetting the streak instead of continuing it.
 
 ## Issue #4: I got notified when a friend added my song to a playlist but not when they rated it
 
-### How I reproduced it
-Using the seeded data, "Crown Heights Anthem" is shared by simone. I had nova rate that song:
+"Crown Heights Anthem" belongs to simone in the seed data, so I had nova rate it:
 
 ```
 curl -X POST "http://127.0.0.1:5000/songs/<crown_heights_anthem_id>/rate" \
@@ -91,25 +88,34 @@ curl -X POST "http://127.0.0.1:5000/songs/<crown_heights_anthem_id>/rate" \
   -d '{"user_id":"<nova_id>","score":5}'
 ```
 
-Then I checked simone's notifications:
+then checked simone's notifications:
 
 ```
 curl "http://127.0.0.1:5000/users/<simone_id>/notifications"
 ```
 
-For comparison, I also looked at nova's notifications, which already has a seeded `song_added_to_playlist` notification from darius adding "Midnight Drive" to a playlist, so I know that notification path works.
+As a sanity check I also looked at nova's notifications, which already has a seeded `song_added_to_playlist` notification from darius adding "Midnight Drive" — so that notification path works fine.
 
-Expected: simone should get a notification that nova rated her song, the same way nova got notified when darius added her song to a playlist.
-Actual: the rate request succeeds (201, rating gets saved), but `GET /users/<simone_id>/notifications` comes back with `"count": 0`. No notification ever gets created when someone rates a song.
+The rating itself succeeds (201, saved to the DB), but `GET /users/<simone_id>/notifications` comes back with `"count": 0`. simone should be notified that nova rated her song, same as nova was notified about the playlist add. Rating a song just doesn't create a notification at all.
 
 ## Issue #5: The last song in a playlist never shows up
 
-### How I reproduced it
-The seeded "Late Night Vibes" playlist, created by nova, has 7 songs in order: Midnight Drive, Still Waters, First Light, Block Party, Late Night Session, Golden Hour, Free Throws. I requested its songs:
+nova's "Late Night Vibes" playlist has 7 songs seeded in order: Midnight Drive, Still Waters, First Light, Block Party, Late Night Session, Golden Hour, Free Throws. I requested its songs:
 
 ```
 curl "http://127.0.0.1:5000/playlists/<late_night_vibes_id>/songs"
 ```
 
-Expected: the response should return all 7 songs in position order, ending with "Free Throws".
-Actual: the response comes back with `"count": 6` and stops at "Golden Hour." "Free Throws," the last song by position, is missing from the list entirely.
+All 7 should come back in position order, ending with "Free Throws." Instead the response has `"count": 6` and stops at "Golden Hour" — "Free Throws," the last song by position, is missing entirely.
+
+# Milestone 3: Bug Fixes
+
+## Issue #1: My listening streak keeps resetting
+
+**How I reproduced it:** Ran `pytest tests/test_streaks.py -v`. `test_streak_increments_on_sunday` failed — a Saturday listen then a Sunday listen should make the streak go from 1 to 2, but it stayed at 1.
+
+**How I found the root cause:** Opened `services/streak_service.py` and read `update_listening_streak()`, since that's what the failing test calls. Found this line: `elif days_since_last == 1 and today.weekday() != 6:`.
+
+**The root cause:** `weekday() == 6` means Sunday, so this line was blocking the streak from incrementing specifically on Sundays. There's no reason a streak should care what day of the week it is, just whether the listen was 1 day after the last one.
+
+**My fix and side-effect check:** It was unnecessary to check for Sunday, so I removed that condition, leaving `elif days_since_last == 1:`. Reran the tests and all 5 pass now, including the Sunday one. I also checked the other tests (same-day listens, skipped days) still pass, so the rest of the streak logic wasn't affected.
