@@ -129,3 +129,13 @@ All 7 should come back in position order, ending with "Free Throws." Instead the
 **The root cause:** `rate_song()` was just missing the notification step. It never had any code to notify `song.shared_by` that their song was rated, unlike `add_to_playlist()` which does this for playlist adds.
 
 **My fix and side-effect check:** Added a `create_notification()` call after the rating is saved and committed, notifying `song.shared_by` with type `"song_rated"` (skipped if the rater is rating their own song, same pattern as `add_to_playlist()`). Verified manually: rating someone else's song now creates a notification for the owner, and rating your own song does not. Reran the full test suite — all streak and search tests still pass, and the two failing playlist tests are the pre-existing Issue #5 bug, unrelated to this change.
+
+## Issue #5: The last song in a playlist never shows up
+
+**How I reproduced it:** Requested nova's "Late Night Vibes" playlist songs via `GET /playlists/<id>/songs`. It has 7 songs seeded in order, but the response came back with `"count": 6` and stopped before the last song, "Free Throws."
+
+**How I found the root cause:** Opened `services/playlist_service.py` and read `get_playlist_songs()`, since that's the function the route calls. The query builds the songs correctly, ordered by position, but the return line was `[song.to_dict() for song in songs[:-1]]`.
+
+**The root cause:** `songs[:-1]` is a Python slice that drops the last item from the list. So the function always cut off the last song by position, no matter how many songs were in the playlist.
+
+**My fix and side-effect check:** Removed the `[:-1]` slice so it returns `song.to_dict() for song in songs`. Reran the tests — `test_playlist_returns_all_songs` and `test_playlist_returns_songs_in_order` now pass, and `test_empty_playlist_returns_empty_list` still passes, confirming the fix works correctly for both an empty playlist and a full one. All 13 tests in the suite pass.
