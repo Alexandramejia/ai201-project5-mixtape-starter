@@ -1,3 +1,9 @@
+# AI Usage
+
+I used AI mainly for codebase navigation and debugging, not for writing the fixes themselves. For each of the three bugs I fixed (Issue #1 in `streak_service.py`, Issue #4 in `notification_service.py`, and Issue #5 in `playlist_service.py`), I used AI to help locate where the bug actually lived across the routes → services → models call chain, since the symptom (a failing test, a missing notification, a missing song) showed up far from the line actually causing it. Once I had a suspicion of the bug myself from reading the surrounding code, I used AI to explain the specific lines I'd flagged — for example, walking through what `days_since_last == 1 and today.weekday() != 6` was checking, or what `songs[:-1]` does to a list — so I could confirm my own read of the bug was actually correct before writing the fix, rather than just taking the AI's word for what was wrong.
+
+I still verified everything myself before treating a bug as fixed: rerunning `pytest tests/` after each change and manually hitting the affected endpoints with `curl` to confirm the behavior matched what the explanation predicted, rather than trusting the explanation on its own.
+
 # Codebase Map
 
 ## Overview
