@@ -145,3 +145,9 @@ All 7 should come back in position order, ending with "Free Throws." Instead the
 **The root cause:** `songs[:-1]` is a Python slice that drops the last item from the list. So the function always cut off the last song by position, no matter how many songs were in the playlist.
 
 **My fix and side-effect check:** Removed the `[:-1]` slice so it returns `song.to_dict() for song in songs`. Reran the tests — `test_playlist_returns_all_songs` and `test_playlist_returns_songs_in_order` now pass, and `test_empty_playlist_returns_empty_list` still passes, confirming the fix works correctly for both an empty playlist and a full one. All 13 tests in the suite pass.
+
+# Milestone 4: Commit History
+
+`git log --oneline` on `bugfix/mixtape`, confirming one commit per bug fix with a `fix:` prefix:
+
+![git log --oneline on bugfix/mixtape](docs/git-log-screenshot.png)
