@@ -119,3 +119,13 @@ All 7 should come back in position order, ending with "Free Throws." Instead the
 **The root cause:** `weekday() == 6` means Sunday, so this line was blocking the streak from incrementing specifically on Sundays. There's no reason a streak should care what day of the week it is, just whether the listen was 1 day after the last one.
 
 **My fix and side-effect check:** It was unnecessary to check for Sunday, so I removed that condition, leaving `elif days_since_last == 1:`. Reran the tests and all 5 pass now, including the Sunday one. I also checked the other tests (same-day listens, skipped days) still pass, so the rest of the streak logic wasn't affected.
+
+## Issue #4: I got notified when a friend added my song to a playlist but not when they rated it
+
+**How I reproduced it:** Had nova rate simone's song "Crown Heights Anthem" via `POST /songs/<id>/rate`, then checked `GET /users/<simone_id>/notifications`. The rating saved fine (201), but the notification count came back 0.
+
+**How I found the root cause:** Opened `services/notification_service.py` and compared `rate_song()` to `add_to_playlist()` right above it, since that one already sends notifications correctly. `add_to_playlist()` calls `create_notification()` after saving; `rate_song()` saves the rating and returns, with no call to `create_notification()` anywhere.
+
+**The root cause:** `rate_song()` was just missing the notification step. It never had any code to notify `song.shared_by` that their song was rated, unlike `add_to_playlist()` which does this for playlist adds.
+
+**My fix and side-effect check:** Added a `create_notification()` call after the rating is saved and committed, notifying `song.shared_by` with type `"song_rated"` (skipped if the rater is rating their own song, same pattern as `add_to_playlist()`). Verified manually: rating someone else's song now creates a notification for the owner, and rating your own song does not. Reran the full test suite — all streak and search tests still pass, and the two failing playlist tests are the pre-existing Issue #5 bug, unrelated to this change.
